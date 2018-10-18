@@ -6,7 +6,7 @@ TITLE=$(cat /loginvsi/.title)
 netadapters=$(ip -o link show | while read -r num dev fam mtulabel mtusize qlabel queu statelabel state modelabel mode grouplabel group qlenlabel qlen maclabel mac brdlabel brcast; do 
         if [[ ${mac} != brd && ${mac} != 00:00:00:00:00:00 && ${dev} != br-*  && ${dev} != veth* ]]; then
             echo ${dev%/*}; 
-        fi     
+        fi
     done
     )
 netadapter=$(echo $netadapters | tail -1 | awk '{split($1,n,":");print n[1]}')
@@ -15,7 +15,7 @@ netadapter=$(echo $netadapters | tail -1 | awk '{split($1,n,":");print n[1]}')
 ip=$(ip -o addr show $netadapter primary scope global | while read -r num dev fam addr rest; do 
         if [[ ${dev} != docker* ]]; then
             echo ${addr%/*}; 
-        fi       
+        fi
     done
     )
 gateway=$(ip -o route list | grep default | while read -r default via gateway dev net; do echo $gateway;done )
@@ -36,39 +36,39 @@ trap 'echo "You cannot cancel this script!"' SIGINT
         # ask questions
         echo "Welcome to $TITLE - version $version ($applianceversion)"
         echo "Please help answer the following questions to get the system setup..."
-        
-        read -ep " Please enter your preferred hostname ($(hostname)):" new_hostname
+
+        read -ep " Please enter your computername (e.g $(hostname)):" new_hostname
         # check if hostname was supplied in fqdn notation
         if [[ "$new_hostname" = *.* ]]; then
             # remove everything up till and including the first . to get the domainname
             new_domain=$(echo ${new_hostname#*.})
             new_hostname=$(echo $new_hostname | cut -d "." -f1)
-            
-        else 
-            read -ep " Please enter your preferred domain ($(domainname)):" new_domain        
-        fi         
+
+        else
+            read -ep " Please enter your domain dns sufffix (e.g contoso.com):" new_domain
+        fi
         read -ep " Please choose a network configuration mode dhcp or static (D/s) " network
         case $network in
             s|S)
-                
+
                 echo "Configuring network using static address..."
                 read -ep " Please provide the new ip address ($ip): " new_ip
                 read -ep " Please provide the netmask ($netmask): " new_netmask
                 read -ep " Please provide the default gateway ($gateway): " new_gateway
                 read -ep " Please provide the nameservers ($nameservers) " new_nameservers
                 read -ep " Please provide the dns search suffix ($new_domain) " new_dnssuffix
-                
+
 
                 [[ -z "$new_dnssuffix" ]] && new_dnssuffix=$new_domain
-                [[ ! -z "$new_ip" ]] && ip=$new_ip                                
+                [[ ! -z "$new_ip" ]] && ip=$new_ip
                 [[ ! -z "$new_netmask" ]] && netmask=$new_netmask
                 [[ ! -z "$new_gateway" ]] && gateway=$new_gateway
                 [[ ! -z "$new_nameservers" ]] && nameservers=$new_nameservers
-                
+
                 [[ ! -z "$new_dnssuffix" ]] && dnssuffix=$new_dnssuffix
-                
-                
-                
+
+
+
                 echo "
 # This file describes the network interfaces available on your system
 # and how to activate them. For more information, see interfaces(5).
@@ -111,9 +111,12 @@ iface $netadapter inet dhcp
         esac
 
         while :       
-        do        
-            read -ersp " Please enter a new password for admin: " password
-            read -ersp " Please confirm the new password: " password2
+        do
+            echo ""
+            read -ersp "Please enter a new password for admin: " password
+            echo ""
+            read -ersp "Please confirm the new password: " password2
+            echo ""
             if [ "$password" != "$password2" ]; then
                 echo "Passwords do not match, try again..."
             elif [[ "$password" == *[\"]* ]]; then
@@ -131,10 +134,11 @@ iface $netadapter inet dhcp
      [[ -z $new_hostname ]] && new_hostname=$(hostname)
      [[ -z $new_domain ]] && new_domain="$(domainname)"
     export fqdn="$new_hostname.$new_domain"    
-    echo " Setting fqdn: $fqdn"
+    echo ""
+    echo "Setting fqdn: $fqdn"
 	
     
-    echo " Setting hostname: $new_hostname"
+    echo "Setting hostname: $new_hostname"
     # update hostname
     echo "$new_hostname" > /etc/hostname
     echo "kernel.domainname=$new_domain" >>/etc/sysctl.conf
@@ -169,7 +173,9 @@ iface $netadapter inet dhcp
     echo $adminpass >/root/.portainer
 	
     chmod 700 /root/.portainer
-
+    
+    echo "Rebooting..."
+        sleep 5
 	reboot  
 	trap SIGINT	
 fi 
@@ -269,8 +275,12 @@ if [ ! -f "/loginvsi/second_run.chk" ]; then
     
     echo "   
     Welcome to $TITLE - version $version ($applianceversion)
-    $TITLE appliance is configured!
-    Web interface available at: https://\4{$netadapter} or https://\n.\o    
+
+    The Login PI Webinterface is available at: 
+        https://\4{$netadapter}
+        https://\n.\o
+
+    NOTE: Please make sure to update your dns records accordingly
     "  > /etc/issue    
 
     echo "#!/bin/bash
