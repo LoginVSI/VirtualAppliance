@@ -85,6 +85,7 @@ done < /root/.hosting
 if [[ "${PROCEED}" == "y" ]]; then
     #copy latest loginvsi folder
     cp -f -r update/loginvsi/* /loginvsi/
+    chmod -R +x /loginvsi/bin
 
     # copy loginvsid.service and loginvsid
     cp -f update/loginvsid /usr/bin/

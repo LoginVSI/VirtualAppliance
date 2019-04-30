@@ -28,35 +28,48 @@ done
 start() {
   rm -rf /loginvsi/startup.log  
   export fqdn=$(hostname).$(domainname)
-  while [ 1 -gt 0 ]; do
-	if [ -f /home/admin/.capturedockerstats ]; then
-		if [ ! -f /home/admin/.dockerstats ]; then
-			echo "Date,Name,CPUPerc,MemUsage,MemPerc,NetIO,BlockIO,PIDs" > /home/admin/.dockerstats
-		fi
-		docker stats --no-stream --format "$(date -Iseconds),{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.MemPerc}},{{.NetIO}},{{.BlockIO}},{{.PIDs}}" >> /home/admin/.dockerstats
-	fi
-	sleep 30
-  done &
   
+  # while [ 1 -gt 0 ]; do
+	# if [ -f /home/admin/.capturedockerstats ]; then
+	# 	if [ ! -f /home/admin/.dockerstats ]; then
+	# 		echo "Date,Name,CPUPerc,MemUsage,MemPerc,NetIO,BlockIO,PIDs" > /home/admin/.dockerstats
+	# 	fi
+	# 	docker stats --no-stream --format "$(date -Iseconds),{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.MemPerc}},{{.NetIO}},{{.BlockIO}},{{.PIDs}}" >> /home/admin/.dockerstats
+	# fi
+	# sleep 30
+  # done &
   cd /loginvsi
-  if [ ! -z $(docker ps -a -f name=portainer --format "{{.Image}}") ]; then
-    echo "Portainer already started, skipping start of portainer..." 
+  if [ ! -f /loginvsi/.portainerdisabled ]; then
+    if [ ! -z $(docker ps -a -f name=portainer --format "{{.Image}}") ]; then
+      echo "Portainer already started, skipping start of portainer..." 
+    else
+      echo  -n "Starting portainer..." 
+      docker run -d -p 9000:9000 --restart=always -v /loginvsi/img:/images -v /certificates:/certs -v /var/run/docker.sock:/var/run/docker.sock -v /opt/portainer:/data --name portainer portainer/portainer --ssl --sslkey /certs/${fqdn}.key.un --sslcert /certs/${fqdn}.crt --admin-password $(cat /root/.portainer) -H unix:///var/run/docker.sock   &>> /loginvsi/startup.log
+      printf "\e[32m[DONE]\e[39m \r\n" 
+    fi
   else
-    echo  -n "Starting portainer..." 
-    docker run -d -p 9000:9000 --restart=always -v /loginvsi/img:/images -v /certificates:/certs -v /var/run/docker.sock:/var/run/docker.sock -v /opt/portainer:/data --name portainer portainer/portainer --ssl --sslkey /certs/${fqdn}.key.un --sslcert /certs/${fqdn}.crt --admin-password $(cat /root/.portainer) -H unix:///var/run/docker.sock   &>> /loginvsi/startup.log
-    printf "\e[32m[DONE]\e[39m \r\n" 
+    if [ ! -z $(docker ps -a -f name=portainer --format "{{.Image}}") ]; then
+      docker rm -f portainer
+    fi
   fi
-  
   #if [ ! -z $(docker ps -a -f name=appliancemanagement --format "{{.Image}}") ]; then
   #  echo "ApplianceManagement container already exists, not recreating.."
   #else  
   #  docker service create --name appliancemanagement --publish 8000:8000 --secret ADMIN_PASSWORD --secret APPLIANCEMANAGEMENT_PFX --secret APPLIANCEMANAGEMENT_PFX_PASSWORD loginvsi/appliancemanagement:stable
   #fi
 
+
+  allowed_urls=$(grep 'ALLOWED_CLIENT_URLS' < /loginvsi/.env | cut -d'=' -f2)
+  allowed_urls=$(echo $allowed_urls | sed "s,https://$fqdn,,g")
+  allowed_urls=$(echo $allowed_urls | sed "s,$allowed_ips,,g")
+  allowed_urls+=";https://$fqdn$allowed_ips"
+  
+  allowed_urls=${allowed_urls#";"}
+  
   sed -i '/ALLOWED_CLIENT_URLS=/d' /loginvsi/.env
   sed -i '/COMPOSE_PROJECT_NAME=/d' /loginvsi/.env
   echo COMPOSE_PROJECT_NAME=loginvsi >>/loginvsi/.env
-  echo ALLOWED_CLIENT_URLS=https://$fqdn$allowed_ips >>/loginvsi/.env
+  echo ALLOWED_CLIENT_URLS=$allowed_urls >>/loginvsi/.env
   
   export $(cat .env); docker stack deploy --prune --resolve-image never --compose-file ./docker-compose.yml VSI &>> /loginvsi/startup.log
   sleep 5 &>>/loginvsi/startup.log

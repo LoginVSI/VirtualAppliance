@@ -18,7 +18,10 @@ menu:main:Maintenance Menu
 	preproc: /loginvsi/menu/gethostname
 	exec:Regenerate self-signed certificates:pause:/loginvsi/bin/regeneratessl
 	exec:Apply new certificate:pause:/loginvsi/bin/applypfx
+	exec:Change allowed urls:pause:/loginvsi/bin/changeallowedurls
 	exec:Update:pause:loginvsid update
+	exec:Stop and disable portainer:pause:/loginvsi/bin/disableportainer
+	exec:Start and enable portainer:pause:/loginvsi/bin/enableportainer
 	nop
 	group:Network Configuration
 	exec::makemenu: (\
@@ -41,8 +44,8 @@ menu:troublshoot:Troubleshooting
 	exit:Back to main menu
 	nop:--------------------------
 	exec:Start enable SSH server:pause:systemctl enable ssh;systemctl start ssh
-	exec:Stop and disable SSH server:pause:systemctl disable ssh; systemctl stop ssh
-	exec:Restart portainer:pause:docker restart portainer
+	exec:Stop and disable SSH server:pause:systemctl disable ssh; systemctl stop ssh	
+	exec:Restart portainer:pause:docker restart portainer	
 	exec:Ping:edit,pause:clear;ping -c 10 ~Address:~
 	exec:Show netstat:display:netstat -tuna
 	exec:Show LoginVSI service status:display:loginvsid status
