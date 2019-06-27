@@ -8,14 +8,16 @@
 # Short-Description: loginvsid
 # Description:       loginvsid
 ### END INIT INFO
+# shellcheck disable=2060,2086,2046,2034
 
 netadapters=$(ip -o link show | while read -r num dev fam mtulabel mtusize qlabel queu statelabel state modelabel mode grouplabel group qlenlabel qlen maclabel mac brdlabel brcast; do 
         if [[ ${mac} != brd && ${mac} != 00:00:00:00:00:00 && ${dev} != br-*  && ${dev} != veth* ]]; then
             echo ${dev%/*} | awk '{split($1,n,":");print n[1]}'; 
         fi     
     done
-    )   
-for netadapter in $(echo $netadapters); do
+    )
+
+for netadapter in $netadapters; do
     ip=$(ip -o addr show $netadapter primary scope global | while read -r num dev fam addr rest; do 
         if [[ ${dev} != docker* ]]; then
             echo ${addr%/*}; 
@@ -27,7 +29,8 @@ done
 
 start() {
   rm -rf /loginvsi/startup.log  
-  export fqdn=$(hostname).$(domainname)
+  fqdn=$(hostname).$(domainname)
+  export fqdn
   
   # while [ 1 -gt 0 ]; do
 	# if [ -f /home/admin/.capturedockerstats ]; then
@@ -38,9 +41,9 @@ start() {
 	# fi
 	# sleep 30
   # done &
-  cd /loginvsi
+  cd /loginvsi || (echo "/loginvsi folder cannot be found" && exit 1)
   if [ ! -f /loginvsi/.portainerdisabled ]; then
-    if [ ! -z $(docker ps -a -f name=portainer --format "{{.Image}}") ]; then
+    if [ -n "$(docker ps -a -f name=portainer --format '{{.Image}}')" ]; then
       echo "Portainer already started, skipping start of portainer..." 
     else
       echo  -n "Starting portainer..." 
@@ -48,7 +51,7 @@ start() {
       printf "\e[32m[DONE]\e[39m \r\n" 
     fi
   else
-    if [ ! -z $(docker ps -a -f name=portainer --format "{{.Image}}") ]; then
+    if [ -n "$(docker ps -a -f name=portainer --format '{{.Image}}')" ]; then
       docker rm -f portainer
     fi
   fi
@@ -74,10 +77,10 @@ start() {
   export $(cat .env); docker stack deploy --prune --resolve-image never --compose-file ./docker-compose.yml VSI &>> /loginvsi/startup.log
   sleep 5 &>>/loginvsi/startup.log
   
-  for f in $(cat /loginvsi/docker-compose.yml | grep "{DB_ROOT}")
+  for f in $(grep "{DB_ROOT}" < /loginvsi/docker-compose.yml)
 	do 
 		folder=$(echo $f | cut -d"-" -f2 | cut -d"/" -f2 | cut -d":" -f1) 
-		if [ ! -z $folder ]; then
+		if [ -n "$folder" ]; then
 		  if [ ! -d /loginvsi/data/$folder ]; then        
 			  mkdir -p /loginvsi/data/$folder; 
 		  fi
@@ -91,7 +94,7 @@ start() {
   while [ $COUNT -le $MAXCOUNT ];
   do    
     COUNT=$((COUNT+1))    
-    RUNNING=$(docker stack services VSI --format "{{.Replicas}}" | grep "1/1" | wc -l)    
+    RUNNING=$(docker stack services VSI --format "{{.Replicas}}" | grep -c "1/1")    
     if [ $TOTAL -eq $RUNNING ]; then
       printf "\rStarting LoginVSI services... \e[32m[DONE]\e[39m \r\n" 
       DONE="true" 
@@ -102,7 +105,7 @@ start() {
     sleep 1 &>/dev/null  
   done
   if [ -z $DONE ]; then
-    echo "\rStarting LoginVSI services... \e[31m[TIMEOUT]\e[39m \r\n" 
+    printf "\rStarting LoginVSI services... \e[31m[TIMEOUT]\e[39m \r\n" 
   else
     
     if [ -f /certificates/CA.crt ]; then       
@@ -124,7 +127,7 @@ stop() {
   rm -rf /loginvsi/stop.log
   echo -n "Stopping LoginVSI services..."
   docker stack rm VSI  &>> /loginvsi/stop.log
-  while [[ ! -z $(docker network ls -qf name=VSI_) ]];
+  while [[ -n "$(docker network ls -qf name=VSI_)" ]];
   do    
     docker network prune -f &>> /loginvsi/stop.log
     sleep 5
@@ -142,27 +145,34 @@ status() {
 }
 update() {
   [[ $(echo "$2" | tr '[:upper:]' '[:lower:]') == "offline" ]] && offline=true  
-  [[ $(echo "$2" | tr '[:upper:]' '[:lower:]') == "internal" ]] && internal=true  
-  cd /loginvsi
+  [[ $(echo "$2" | tr '[:upper:]' '[:lower:]') == "internal" ]] && internal=true     
+  [[ $(echo "$2" | tr '[:upper:]' '[:lower:]') == "recurse" ]] && recurse=true     
+    
+  cd /loginvsi || (echo "/loginvsi folder cannot be found" && exit 1)
   if [ -d /loginvsi/update ]; then
     rm -rf /loginvsi/update
   fi
   if [ -z $offline ]; then
-      if [ -z $internal ]; then        
-        curl -Lfs -m 10 https://github.com/LoginVSI/VirtualAppliance.git &> /dev/null
-        if [[ $? != 0 ]]; then 
-          echo "Failed to connect to github.com, make sure the appliance can access github.com"
-          exit
+      read -r repo branch hostingfolder < /root/.hosting
+      if [ -z $internal ]; then                
+        if [ $repo == "https://github.com/LoginVSI/Hosting.git" ]; then  
+          curl -Lfs -m 10 https://github.com/LoginVSI/LoginPIVirtualAppliance.git &> /dev/null || (echo "Failed to connect to github.com, make sure the appliance can access github.com" && exit 1)
+        else
+          curl -Lfs -m 10 https://github.com/LoginVSI/VirtualApplianceTAT.git &> /dev/null || (echo "Failed to connect to github.com, make sure the appliance can access github.com" && exit 1)
         fi
-
-        git clone -q https://github.com/LoginVSI/VirtualAppliance.git /loginvsi/update
+        
+        if [ $repo == "https://github.com/LoginVSI/Hosting.git" ]; then  
+          git clone -b $branch -q https://github.com/LoginVSI/LoginPIVirtualAppliance.git /loginvsi/update
+        else
+          git clone -q https://github.com/LoginVSI/VirtualApplianceTAT.git /loginvsi/update
+        fi
       else
-        read -ep "InternalUrl for virtual appliance: " applianceurl
-        read -ep "InternalUrl for Hosting: " hostingurl
+        read -rep "InternalUrl for virtual appliance: " applianceurl
+        read -rep "InternalUrl for Hosting: " hostingurl
         git clone -q $applianceurl /loginvsi/update
       fi         
   else
-    read -ep "Make sure the update iso is connected to the VM, press enter to continue" emtpy
+    read -rep "Make sure the update iso is connected to the VM, press enter to continue" _
     [[ ! -d /mnt/cdrom ]] && mkdir -p /mnt/cdrom
     mount /dev/cdrom /mnt/cdrom
 
@@ -175,12 +185,14 @@ update() {
   # execute update script
 
   chmod +x /loginvsi/update/update
-  if [ ! -z $offline ]; then   
+  if [ -n "$offline" ]; then   
     /loginvsi/update/update offline
-  elif [ ! -z $internal ]; then 
-    /loginvsi/update/update "$2" "$hostingurl"    
+  elif [ -n "$internal" ]; then 
+    /loginvsi/update/update "$2" "$hostingurl"      
+  elif [ -n "$recurse" ]; then
+    /loginvsi/update/update recurse     
   else
-    /loginvsi/update/update
+    /loginvsi/update/update     
   fi
   retVal=$?
   if [ $retVal -ne 0 ]; then
@@ -191,7 +203,7 @@ update() {
     rm -rf /loginvsi/update
   fi
 
-  if [ ! -z $offline ];  then
+  if [ -n "$offline" ];  then
    umount /mnt/cdrom
     rm -rf /mnt/cdrom
   fi
